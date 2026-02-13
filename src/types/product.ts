@@ -95,6 +95,8 @@ export interface SaleRecord {
   amountPaid: number;
   change: number;
   cashierName: string;
+  storeId: string;
+  storeName: string;
   timestamp: string;
 }
 
@@ -117,6 +119,72 @@ export interface Cashier {
   phone: string;
   password: string; // In real app, this would be hashed
   role: 'cashier';
+  assignedStoreId?: string;
+  assignedStoreName?: string;
+  isActive: boolean;
+  createdAt: string;
+  lastLogin?: string;
+}
+
+// Store/Branch for multi-store support
+export interface Store {
+  id: string;
+  name: string;
+  code: string;
+  address: string;
+  phone: string;
+  email: string;
+  managerName: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+// Store assignment for cashiers
+export interface CashierStoreAssignment {
+  cashierId: string;
+  storeId: string;
+  assignedAt: string;
+}
+
+// Stock transfer between stores
+export interface StockTransfer {
+  id: string;
+  fromStoreId: string;
+  toStoreId: string;
+  fromStoreName: string;
+  toStoreName: string;
+  barcode: string;
+  productName: string;
+  quantity: number;
+  status: 'pending' | 'completed' | 'cancelled';
+  requestedBy: string;
+  completedAt?: string;
+  timestamp: string;
+}
+
+// Extended Product with store-specific stock
+export interface StoreProduct extends Product {
+  storeId: string;
+  storeStock: number;
+}
+
+// Extended SaleRecord with store info
+export interface StoreSaleRecord extends SaleRecord {
+  storeId: string;
+  storeName: string;
+}
+
+// Manager user for store management
+export interface Manager {
+  id: string;
+  managerId: string;
+  name: string;
+  email: string;
+  phone: string;
+  password: string; // In real app, this would be hashed
+  role: 'manager';
+  assignedStoreId?: string;
+  assignedStoreName?: string;
   isActive: boolean;
   createdAt: string;
   lastLogin?: string;

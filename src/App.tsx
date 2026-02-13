@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { StoreProvider } from './contexts/StoreContext';
 import { ProtectedRoute } from './components/admin/ProtectedRoute';
 import { AdminLayout, AdminPage } from './components/admin/AdminLayout';
 import { AdminLogin } from './pages/AdminLogin';
@@ -7,6 +8,10 @@ import { CashierLogin } from './pages/CashierLogin';
 import { Dashboard } from './pages/Dashboard';
 import { Products } from './pages/Products';
 import { CashierManagement } from './pages/CashierManagement';
+import { SalesHistory } from './pages/SalesHistory';
+import { StoreManagement } from './pages/StoreManagement';
+import { AnalyticsDashboard } from './pages/AnalyticsDashboard';
+import { ManagerManagement } from './pages/ManagerManagement';
 import { CashierView } from './pages/CashierView';
 
 /**
@@ -21,7 +26,9 @@ type AppMode = 'cashier' | 'admin';
 function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <StoreProvider>
+        <AppContent />
+      </StoreProvider>
     </AuthProvider>
   );
 }
@@ -35,6 +42,8 @@ function AppContent() {
   const [appMode, setAppMode] = useState<AppMode>('cashier');
   const [adminPage, setAdminPage] = useState<AdminPage>('dashboard');
   const [cashierName, setCashierName] = useState<string>('');
+  const [cashierStoreId, setCashierStoreId] = useState<string>('');
+  const [cashierStoreName, setCashierStoreName] = useState<string>('');
 
   // Switch to admin mode
   const handleSwitchToAdmin = () => {
@@ -42,13 +51,17 @@ function AppContent() {
   };
 
   // Handle cashier login
-  const handleCashierLogin = (name: string) => {
+  const handleCashierLogin = (name: string, assignedStoreId?: string, assignedStoreName?: string) => {
     setCashierName(name);
+    setCashierStoreId(assignedStoreId || '');
+    setCashierStoreName(assignedStoreName || '');
   };
 
   // Handle cashier logout
   const handleCashierLogout = () => {
     setCashierName('');
+    setCashierStoreId('');
+    setCashierStoreName('');
   };
 
   // Render admin page content
@@ -60,6 +73,14 @@ function AppContent() {
         return <Products />;
       case 'cashiers':
         return <CashierManagement />;
+      case 'sales':
+        return <SalesHistory />;
+      case 'stores':
+        return <StoreManagement />;
+      case 'analytics':
+        return <AnalyticsDashboard />;
+      case 'managers':
+        return <ManagerManagement />;
       default:
         return <Dashboard />;
     }
@@ -96,6 +117,8 @@ function AppContent() {
   return (
     <CashierView
       cashierName={cashierName}
+      assignedStoreId={cashierStoreId}
+      assignedStoreName={cashierStoreName}
       onLogout={handleCashierLogout}
       onSwitchToAdmin={handleSwitchToAdmin}
     />

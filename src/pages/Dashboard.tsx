@@ -6,9 +6,11 @@ import {
   AlertTriangle,
   TrendingUp,
   ArrowRight,
+  Store,
 } from 'lucide-react';
 import { DashboardStats, Product } from '../types/product';
-import { DashboardService, LOW_STOCK_THRESHOLD } from '../services/localStorageService';
+import { DashboardService, LOW_STOCK_THRESHOLD, SaleService, StoreService } from '../services/localStorageService';
+import { useStore } from '../contexts/StoreContext';
 import { SalesLineChart } from '../components/charts/SalesLineChart';
 import { BestSellingChart } from '../components/charts/BestSellingChart';
 
@@ -44,6 +46,7 @@ function generateBestSellingData() {
  * Displays overview statistics and key metrics for admin
  */
 export function Dashboard() {
+  const { currentStore } = useStore();
   const [stats, setStats] = useState<DashboardStats>({
     totalProducts: 0,
     inStockProducts: 0,
@@ -53,11 +56,44 @@ export function Dashboard() {
   const [lowStockItems, setLowStockItems] = useState<Product[]>([]);
   const [todaySalesData, setTodaySalesData] = useState(generateTodaySalesData());
   const [bestSellingData, setBestSellingData] = useState(generateBestSellingData());
+  const [todayRevenue, setTodayRevenue] = useState(0);
+  const [todaySales, setTodaySales] = useState(0);
 
-  // Load dashboard data on mount
-  useEffect(() => {
+  /**
+   * Load dashboard data - defined before useEffect
+   */
+  const loadDashboardData = () => {
+    // Get all products and filter by store if needed
+    // For now, we show all products but in a real implementation,
+    // products would be filtered by store ID
     setStats(DashboardService.getStats());
     setLowStockItems(DashboardService.getLowStockProducts(LOW_STOCK_THRESHOLD));
+    
+    // Get today's sales for current store
+    const storeId = StoreService.getCurrentStore()?.id;
+    const todaySalesList = storeId 
+      ? SaleService.getTodaySales(storeId)
+      : SaleService.getTodaySales();
+    const totalRevenue = todaySalesList.reduce((sum, sale) => sum + sale.total, 0);
+    setTodayRevenue(totalRevenue);
+    setTodaySales(todaySalesList.length);
+  };
+
+  // Load dashboard data on mount and when store changes
+  useEffect(() => {
+    loadDashboardData();
+    
+    // Listen for store change events
+    const handleStoreChange = () => {
+      loadDashboardData();
+    };
+    window.addEventListener('storeChanged', handleStoreChange);
+    
+    // Also reload when window gains focus (in case user switched tabs)
+    const handleFocus = () => {
+      loadDashboardData();
+    };
+    window.addEventListener('focus', handleFocus);
     
     // Simulate real-time updates every 30 seconds
     const interval = setInterval(() => {
@@ -65,8 +101,12 @@ export function Dashboard() {
       setBestSellingData(generateBestSellingData());
     }, 30000);
 
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storeChanged', handleStoreChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [currentStore]);
 
   /**
    * Stat Card Component
@@ -104,11 +144,26 @@ export function Dashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-600 mt-1">Overview of your store inventory</p>
+          <p className="text-gray-600 mt-1">
+            {currentStore ? (
+              <span className="flex items-center gap-2">
+                <Store className="h-4 w-4" />
+                Overview of {currentStore.name}
+              </span>
+            ) : (
+              'Overview of your store inventory'
+            )}
+          </p>
         </div>
-        <div className="flex items-center space-x-2 text-sm text-gray-500">
-          <TrendingUp className="h-4 w-4" />
-          <span>Live Updates</span>
+        <div className="flex items-center space-x-4">
+          <div className="text-right">
+            <p className="text-xs text-gray-500">Today's Sales</p>
+            <p className="text-lg font-bold text-green-600">${todayRevenue.toFixed(2)}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-gray-500">Transactions</p>
+            <p className="text-lg font-bold text-blue-600">{todaySales}</p>
+          </div>
         </div>
       </div>
 

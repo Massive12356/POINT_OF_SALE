@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Store, Shield, User, LogOut } from 'lucide-react';
+import { Store, Shield, User, LogOut, Building2 } from 'lucide-react';
 import { CartItem as CartItemType, SaleRecord, PaymentMethod, SaleItem } from '../types/product';
-import { ProductService, SaleService } from '../services/localStorageService';
+import { ProductService, SaleService, StoreService } from '../services/localStorageService';
 import { BarcodeInput } from '../components/BarcodeInput';
 import { Cart } from '../components/Cart';
 import { PaymentModal } from '../components/PaymentModal';
@@ -13,6 +13,8 @@ import { NotificationToast } from '../components/NotificationToast';
  */
 interface CashierViewProps {
   cashierName: string;
+  assignedStoreId?: string;
+  assignedStoreName?: string;
   onLogout: () => void;
   onSwitchToAdmin: () => void;
 }
@@ -30,7 +32,7 @@ interface Notification {
  * Cashier View Component
  * Complete POS cashier interface with payment and receipt
  */
-export function CashierView({ cashierName, onLogout, onSwitchToAdmin }: CashierViewProps) {
+export function CashierView({ cashierName, assignedStoreId, assignedStoreName, onLogout, onSwitchToAdmin }: CashierViewProps) {
   const [cart, setCart] = useState<CartItemType[]>([]);
   const [showPayment, setShowPayment] = useState(false);
   const [completedSale, setCompletedSale] = useState<SaleRecord | null>(null);
@@ -164,12 +166,18 @@ export function CashierView({ cashierName, onLogout, onSwitchToAdmin }: CashierV
       total: item.product.price * item.quantity,
     }));
 
+    // Get store info for the sale
+    const storeId = assignedStoreId || StoreService.getCurrentStore()?.id || 'store-001';
+    const storeName = assignedStoreName || StoreService.getCurrentStore()?.name || 'Main Store';
+
     // Process the sale
     const result = SaleService.processSale(
       saleItems,
       paymentMethod,
       amountPaid,
-      cashierName
+      cashierName,
+      storeId,
+      storeName
     );
 
     if (result.success && result.sale) {
@@ -215,10 +223,19 @@ export function CashierView({ cashierName, onLogout, onSwitchToAdmin }: CashierV
 
             {/* Cashier Info - Mobile Optimized */}
             <div className="flex items-center space-x-2 sm:space-x-4">
-              <div className="flex items-center space-x-1 sm:space-x-2 text-sm text-gray-600">
-                <User className="h-4 w-4" />
-                <span className="hidden sm:inline">{cashierName}</span>
-                <span className="sm:hidden text-xs">{cashierName.split(' ')[0]}</span>
+              <div className="flex flex-col items-end">
+                <div className="flex items-center space-x-1 sm:space-x-2 text-sm text-gray-600">
+                  <User className="h-4 w-4" />
+                  <span className="hidden sm:inline">{cashierName}</span>
+                  <span className="sm:hidden text-xs">{cashierName.split(' ')[0]}</span>
+                </div>
+                {assignedStoreName && (
+                  <div className="flex items-center text-xs text-blue-600 mt-0.5">
+                    <Building2 className="h-3 w-3 mr-1" />
+                    <span className="hidden sm:inline">{assignedStoreName}</span>
+                    <span className="sm:hidden">{assignedStoreName.split(' ')[0]}</span>
+                  </div>
+                )}
               </div>
               <button
                 onClick={onLogout}

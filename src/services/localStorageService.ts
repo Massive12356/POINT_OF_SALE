@@ -1,4 +1,4 @@
-import { Product, AdminUser, StockLog, Category, DashboardStats, SaleRecord, SaleItem, PaymentMethod, Cashier } from '../types/product';
+import { Product, AdminUser, StockLog, Category, DashboardStats, SaleRecord, SaleItem, PaymentMethod, Cashier, Store, StockTransfer, Manager } from '../types/product';
 
 // Storage keys
 const STORAGE_KEYS = {
@@ -9,6 +9,10 @@ const STORAGE_KEYS = {
   SALES: 'pos_sales',
   CASHIER_SESSION: 'pos_cashier_session',
   CASHIERS: 'pos_cashiers',
+  STORES: 'pos_stores',
+  STOCK_TRANSFERS: 'pos_stock_transfers',
+  CURRENT_STORE: 'pos_current_store',
+  MANAGERS: 'pos_managers',
 } as const;
 
 // Default admin credentials
@@ -435,7 +439,9 @@ export const SaleService = {
     items: SaleItem[],
     paymentMethod: PaymentMethod,
     amountPaid: number,
-    cashierName: string
+    cashierName: string,
+    storeId: string,
+    storeName: string
   ): { success: boolean; sale?: SaleRecord; error?: string; change?: number } {
     // Validate items
     if (items.length === 0) {
@@ -491,6 +497,8 @@ export const SaleService = {
       amountPaid,
       change,
       cashierName,
+      storeId,
+      storeName,
       timestamp: new Date().toISOString(),
     };
 
@@ -510,6 +518,13 @@ export const SaleService = {
   },
 
   /**
+   * Get sales by store
+   */
+  getByStore(storeId: string): SaleRecord[] {
+    return this.getAll().filter((sale) => sale.storeId === storeId);
+  },
+
+  /**
    * Get sale by receipt number
    */
   getByReceiptNumber(receiptNumber: string): SaleRecord | undefined {
@@ -520,8 +535,8 @@ export const SaleService = {
   /**
    * Get sales by date range
    */
-  getByDateRange(startDate: Date, endDate: Date): SaleRecord[] {
-    const sales = this.getAll();
+  getByDateRange(startDate: Date, endDate: Date, storeId?: string): SaleRecord[] {
+    const sales = storeId ? this.getByStore(storeId) : this.getAll();
     return sales.filter((sale) => {
       const saleDate = new Date(sale.timestamp);
       return saleDate >= startDate && saleDate <= endDate;
@@ -531,18 +546,18 @@ export const SaleService = {
   /**
    * Get today's sales
    */
-  getTodaySales(): SaleRecord[] {
+  getTodaySales(storeId?: string): SaleRecord[] {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    return this.getByDateRange(today, tomorrow);
+    return this.getByDateRange(today, tomorrow, storeId);
   },
 
   /**
    * Calculate daily totals
    */
-  getDailyTotals(date: Date = new Date()): {
+  getDailyTotals(date: Date = new Date(), storeId?: string): {
     totalSales: number;
     totalRevenue: number;
     totalItems: number;
@@ -553,7 +568,7 @@ export const SaleService = {
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
 
-    const sales = this.getByDateRange(startOfDay, endOfDay);
+    const sales = this.getByDateRange(startOfDay, endOfDay, storeId);
 
     const byPaymentMethod: Record<PaymentMethod, { count: number; amount: number }> = {
       cash: { count: 0, amount: 0 },
@@ -729,6 +744,42 @@ export const CashierService = {
   },
 
   /**
+   * Assign cashier to store
+   */
+  assignToStore(id: string, storeId: string, storeName: string): { success: boolean; error?: string } {
+    const cashier = this.findById(id);
+    if (!cashier) {
+      return { success: false, error: 'Cashier not found' };
+    }
+    return this.update(id, { assignedStoreId: storeId, assignedStoreName: storeName });
+  },
+
+  /**
+   * Remove cashier from store
+   */
+  removeFromStore(id: string): { success: boolean; error?: string } {
+    const cashier = this.findById(id);
+    if (!cashier) {
+      return { success: false, error: 'Cashier not found' };
+    }
+    return this.update(id, { assignedStoreId: undefined, assignedStoreName: undefined });
+  },
+
+  /**
+   * Get cashiers by store
+   */
+  getByStore(storeId: string): Cashier[] {
+    return this.getAll().filter((c) => c.assignedStoreId === storeId);
+  },
+
+  /**
+   * Get unassigned cashiers
+   */
+  getUnassigned(): Cashier[] {
+    return this.getAll().filter((c) => !c.assignedStoreId && c.isActive);
+  },
+
+  /**
    * Validate cashier login
    */
   validateLogin(cashierId: string, password: string): Cashier | null {
@@ -748,12 +799,451 @@ export const CashierService = {
     total: number;
     active: number;
     inactive: number;
+    assigned: number;
+    unassigned: number;
   } {
     const cashiers = this.getAll();
     return {
       total: cashiers.length,
       active: cashiers.filter((c) => c.isActive).length,
       inactive: cashiers.filter((c) => !c.isActive).length,
+      assigned: cashiers.filter((c) => c.assignedStoreId).length,
+      unassigned: cashiers.filter((c) => !c.assignedStoreId).length,
+    };
+  },
+};
+
+// Default store
+const DEFAULT_STORE: Store = {
+  id: 'store-001',
+  name: 'Main Store',
+  code: 'MAIN001',
+  address: '123 Main Street, City',
+  phone: '+1234567890',
+  email: 'main@pos.com',
+  managerName: 'Store Manager',
+  isActive: true,
+  createdAt: new Date().toISOString(),
+};
+
+/**
+ * Store Service
+ * Manages multiple store locations
+ */
+export const StoreService = {
+  /**
+   * Initialize stores in storage
+   */
+  initialize(): void {
+    if (!localStorage.getItem(STORAGE_KEYS.STORES)) {
+      localStorage.setItem(STORAGE_KEYS.STORES, JSON.stringify([DEFAULT_STORE]));
+      localStorage.setItem(STORAGE_KEYS.CURRENT_STORE, DEFAULT_STORE.id);
+    }
+  },
+
+  /**
+   * Get all stores
+   */
+  getAll(): Store[] {
+    this.initialize();
+    return JSON.parse(localStorage.getItem(STORAGE_KEYS.STORES) || '[]');
+  },
+
+  /**
+   * Get active stores only
+   */
+  getActive(): Store[] {
+    return this.getAll().filter((s) => s.isActive);
+  },
+
+  /**
+   * Find store by ID
+   */
+  findById(id: string): Store | undefined {
+    return this.getAll().find((s) => s.id === id);
+  },
+
+  /**
+   * Get current selected store
+   */
+  getCurrentStore(): Store | undefined {
+    const currentId = localStorage.getItem(STORAGE_KEYS.CURRENT_STORE);
+    if (currentId) {
+      return this.findById(currentId);
+    }
+    const stores = this.getAll();
+    return stores[0];
+  },
+
+  /**
+   * Set current store
+   */
+  setCurrentStore(storeId: string): void {
+    localStorage.setItem(STORAGE_KEYS.CURRENT_STORE, storeId);
+  },
+
+  /**
+   * Add new store
+   */
+  add(store: Omit<Store, 'id' | 'createdAt'>): { success: boolean; error?: string } {
+    // Validate code uniqueness
+    const stores = this.getAll();
+    if (stores.some((s) => s.code === store.code)) {
+      return { success: false, error: 'Store code already exists' };
+    }
+
+    const newStore: Store = {
+      ...store,
+      id: `store-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+    };
+
+    stores.push(newStore);
+    localStorage.setItem(STORAGE_KEYS.STORES, JSON.stringify(stores));
+    return { success: true };
+  },
+
+  /**
+   * Update store
+   */
+  update(id: string, updates: Partial<Omit<Store, 'id' | 'createdAt'>>): { success: boolean; error?: string } {
+    const stores = this.getAll();
+    const index = stores.findIndex((s) => s.id === id);
+
+    if (index === -1) {
+      return { success: false, error: 'Store not found' };
+    }
+
+    // Validate code uniqueness if being updated
+    if (updates.code && stores.some((s) => s.code === updates.code && s.id !== id)) {
+      return { success: false, error: 'Store code already exists' };
+    }
+
+    stores[index] = { ...stores[index], ...updates };
+    localStorage.setItem(STORAGE_KEYS.STORES, JSON.stringify(stores));
+    return { success: true };
+  },
+
+  /**
+   * Toggle store active status
+   */
+  toggleActive(id: string): { success: boolean; error?: string } {
+    const store = this.findById(id);
+    if (!store) {
+      return { success: false, error: 'Store not found' };
+    }
+    return this.update(id, { isActive: !store.isActive });
+  },
+
+  /**
+   * Get store stats
+   */
+  getStats(): {
+    total: number;
+    active: number;
+    inactive: number;
+  } {
+    const stores = this.getAll();
+    return {
+      total: stores.length,
+      active: stores.filter((s) => s.isActive).length,
+      inactive: stores.filter((s) => !s.isActive).length,
+    };
+  },
+};
+
+/**
+ * Stock Transfer Service
+ * Manages stock transfers between stores
+ */
+export const StockTransferService = {
+  /**
+   * Get all transfers
+   */
+  getAll(): StockTransfer[] {
+    return JSON.parse(localStorage.getItem(STORAGE_KEYS.STOCK_TRANSFERS) || '[]');
+  },
+
+  /**
+   * Get pending transfers for a store
+   */
+  getPendingForStore(storeId: string): StockTransfer[] {
+    return this.getAll().filter(
+      (t) => t.toStoreId === storeId && t.status === 'pending'
+    );
+  },
+
+  /**
+   * Get transfers initiated by a store
+   */
+  getInitiatedByStore(storeId: string): StockTransfer[] {
+    return this.getAll().filter((t) => t.fromStoreId === storeId);
+  },
+
+  /**
+   * Create transfer request
+   */
+  create(transfer: Omit<StockTransfer, 'id' | 'timestamp'>): { success: boolean; error?: string } {
+    const newTransfer: StockTransfer = {
+      ...transfer,
+      id: `transfer-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+    };
+
+    const transfers = this.getAll();
+    transfers.push(newTransfer);
+    localStorage.setItem(STORAGE_KEYS.STOCK_TRANSFERS, JSON.stringify(transfers));
+    return { success: true };
+  },
+
+  /**
+   * Complete transfer (add stock to destination)
+   */
+  complete(transferId: string): { success: boolean; error?: string } {
+    const transfers = this.getAll();
+    const index = transfers.findIndex((t) => t.id === transferId);
+
+    if (index === -1) {
+      return { success: false, error: 'Transfer not found' };
+    }
+
+    if (transfers[index].status !== 'pending') {
+      return { success: false, error: 'Transfer is not pending' };
+    }
+
+    transfers[index].status = 'completed';
+    transfers[index].completedAt = new Date().toISOString();
+
+    localStorage.setItem(STORAGE_KEYS.STOCK_TRANSFERS, JSON.stringify(transfers));
+    return { success: true };
+  },
+
+  /**
+   * Cancel transfer
+   */
+  cancel(transferId: string): { success: boolean; error?: string } {
+    const transfers = this.getAll();
+    const index = transfers.findIndex((t) => t.id === transferId);
+
+    if (index === -1) {
+      return { success: false, error: 'Transfer not found' };
+    }
+
+    if (transfers[index].status !== 'pending') {
+      return { success: false, error: 'Can only cancel pending transfers' };
+    }
+
+    transfers[index].status = 'cancelled';
+    localStorage.setItem(STORAGE_KEYS.STOCK_TRANSFERS, JSON.stringify(transfers));
+    return { success: true };
+  },
+};
+
+// Default managers
+const DEFAULT_MANAGERS: Manager[] = [
+  {
+    id: 'manager-001',
+    managerId: 'MGR001',
+    name: 'Alice Johnson',
+    email: 'alice.johnson@pos.com',
+    phone: '+1234567892',
+    password: 'manager123',
+    role: 'manager',
+    isActive: true,
+    createdAt: new Date().toISOString(),
+  },
+];
+
+/**
+ * Manager Service
+ * Manages store managers
+ */
+export const ManagerService = {
+  /**
+   * Initialize managers in storage
+   */
+  initialize(): void {
+    if (!localStorage.getItem(STORAGE_KEYS.MANAGERS)) {
+      localStorage.setItem(STORAGE_KEYS.MANAGERS, JSON.stringify(DEFAULT_MANAGERS));
+    }
+  },
+
+  /**
+   * Get all managers
+   */
+  getAll(): Manager[] {
+    this.initialize();
+    return JSON.parse(localStorage.getItem(STORAGE_KEYS.MANAGERS) || '[]');
+  },
+
+  /**
+   * Get active managers only
+   */
+  getActive(): Manager[] {
+    return this.getAll().filter((m) => m.isActive);
+  },
+
+  /**
+   * Find manager by ID
+   */
+  findById(id: string): Manager | undefined {
+    return this.getAll().find((m) => m.id === id);
+  },
+
+  /**
+   * Find manager by managerId
+   */
+  findByManagerId(managerId: string): Manager | undefined {
+    return this.getAll().find((m) => m.managerId === managerId);
+  },
+
+  /**
+   * Check if managerId is unique
+   */
+  isManagerIdUnique(managerId: string, excludeId?: string): boolean {
+    const managers = this.getAll();
+    return !managers.some((m) => m.managerId === managerId && m.id !== excludeId);
+  },
+
+  /**
+   * Add new manager
+   */
+  add(manager: Omit<Manager, 'id' | 'createdAt'>): { success: boolean; error?: string } {
+    // Validate managerId uniqueness
+    if (!this.isManagerIdUnique(manager.managerId)) {
+      return { success: false, error: 'Manager ID already exists' };
+    }
+
+    // Validate required fields
+    if (!manager.name.trim() || !manager.email.trim() || !manager.password) {
+      return { success: false, error: 'All fields are required' };
+    }
+
+    const newManager: Manager = {
+      ...manager,
+      id: `manager-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+    };
+
+    const managers = this.getAll();
+    managers.push(newManager);
+    localStorage.setItem(STORAGE_KEYS.MANAGERS, JSON.stringify(managers));
+    return { success: true };
+  },
+
+  /**
+   * Update manager
+   */
+  update(id: string, updates: Partial<Omit<Manager, 'id' | 'createdAt'>>): { success: boolean; error?: string } {
+    const managers = this.getAll();
+    const index = managers.findIndex((m) => m.id === id);
+
+    if (index === -1) {
+      return { success: false, error: 'Manager not found' };
+    }
+
+    // Validate managerId uniqueness if being updated
+    if (updates.managerId && !this.isManagerIdUnique(updates.managerId, id)) {
+      return { success: false, error: 'Manager ID already exists' };
+    }
+
+    managers[index] = { ...managers[index], ...updates };
+    localStorage.setItem(STORAGE_KEYS.MANAGERS, JSON.stringify(managers));
+    return { success: true };
+  },
+
+  /**
+   * Delete manager
+   */
+  delete(id: string): { success: boolean; error?: string } {
+    const managers = this.getAll();
+    const filtered = managers.filter((m) => m.id !== id);
+
+    if (filtered.length === managers.length) {
+      return { success: false, error: 'Manager not found' };
+    }
+
+    localStorage.setItem(STORAGE_KEYS.MANAGERS, JSON.stringify(filtered));
+    return { success: true };
+  },
+
+  /**
+   * Toggle manager active status
+   */
+  toggleActive(id: string): { success: boolean; error?: string } {
+    const manager = this.findById(id);
+    if (!manager) {
+      return { success: false, error: 'Manager not found' };
+    }
+    return this.update(id, { isActive: !manager.isActive });
+  },
+
+  /**
+   * Assign manager to store
+   */
+  assignToStore(id: string, storeId: string, storeName: string): { success: boolean; error?: string } {
+    const manager = this.findById(id);
+    if (!manager) {
+      return { success: false, error: 'Manager not found' };
+    }
+    return this.update(id, { assignedStoreId: storeId, assignedStoreName: storeName });
+  },
+
+  /**
+   * Remove manager from store
+   */
+  removeFromStore(id: string): { success: boolean; error?: string } {
+    const manager = this.findById(id);
+    if (!manager) {
+      return { success: false, error: 'Manager not found' };
+    }
+    return this.update(id, { assignedStoreId: undefined, assignedStoreName: undefined });
+  },
+
+  /**
+   * Get managers by store
+   */
+  getByStore(storeId: string): Manager[] {
+    return this.getAll().filter((m) => m.assignedStoreId === storeId);
+  },
+
+  /**
+   * Get unassigned managers
+   */
+  getUnassigned(): Manager[] {
+    return this.getAll().filter((m) => !m.assignedStoreId && m.isActive);
+  },
+
+  /**
+   * Validate manager login
+   */
+  validateLogin(managerId: string, password: string): Manager | null {
+    const manager = this.findByManagerId(managerId);
+    if (manager && manager.password === password && manager.isActive) {
+      // Update last login
+      this.update(manager.id, { lastLogin: new Date().toISOString() });
+      return manager;
+    }
+    return null;
+  },
+
+  /**
+   * Get manager stats
+   */
+  getStats(): {
+    total: number;
+    active: number;
+    inactive: number;
+    assigned: number;
+    unassigned: number;
+  } {
+    const managers = this.getAll();
+    return {
+      total: managers.length,
+      active: managers.filter((m) => m.isActive).length,
+      inactive: managers.filter((m) => !m.isActive).length,
+      assigned: managers.filter((m) => m.assignedStoreId).length,
+      unassigned: managers.filter((m) => !m.assignedStoreId).length,
     };
   },
 };

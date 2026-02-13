@@ -11,9 +11,13 @@ import {
   Power,
   PowerOff,
   AlertCircle,
+  Building2,
+  Store,
+  X,
+  Check,
 } from 'lucide-react';
-import { Cashier } from '../types/product';
-import { CashierService } from '../services/localStorageService';
+import { Cashier, Store as StoreType } from '../types/product';
+import { CashierService, StoreService } from '../services/localStorageService';
 
 /**
  * Cashier Management Page
@@ -21,14 +25,17 @@ import { CashierService } from '../services/localStorageService';
  */
 export function CashierManagement() {
   const [cashiers, setCashiers] = useState<Cashier[]>([]);
+  const [stores, setStores] = useState<StoreType[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0 });
+  const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0, assigned: 0, unassigned: 0 });
 
   // Modal states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [selectedCashier, setSelectedCashier] = useState<Cashier | null>(null);
+  const [selectedStoreId, setSelectedStoreId] = useState('');
 
   // Form state
   const [formData, setFormData] = useState({
@@ -44,15 +51,51 @@ export function CashierManagement() {
   // Notification
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  // Load cashiers on mount
+  // Load cashiers and stores on mount
   useEffect(() => {
     loadCashiers();
+    setStores(StoreService.getAll());
   }, []);
 
   const loadCashiers = () => {
     const allCashiers = CashierService.getAll();
     setCashiers(allCashiers);
     setStats(CashierService.getStats());
+  };
+
+  // Handle assign store
+  const handleAssignStore = (cashier: Cashier) => {
+    setSelectedCashier(cashier);
+    setSelectedStoreId(cashier.assignedStoreId || '');
+    setIsAssignModalOpen(true);
+  };
+
+  // Confirm store assignment
+  const handleAssignConfirm = () => {
+    if (!selectedCashier) return;
+
+    if (selectedStoreId) {
+      const store = stores.find((s) => s.id === selectedStoreId);
+      if (store) {
+        const result = CashierService.assignToStore(selectedCashier.id, store.id, store.name);
+        if (result.success) {
+          showNotification(`Cashier assigned to ${store.name}`, 'success');
+        } else {
+          showNotification(result.error || 'Failed to assign cashier', 'error');
+        }
+      }
+    } else {
+      const result = CashierService.removeFromStore(selectedCashier.id);
+      if (result.success) {
+        showNotification('Cashier unassigned from store', 'success');
+      } else {
+        showNotification(result.error || 'Failed to unassign cashier', 'error');
+      }
+    }
+
+    loadCashiers();
+    setIsAssignModalOpen(false);
+    setSelectedCashier(null);
   };
 
   const showNotification = (message: string, type: 'success' | 'error') => {
@@ -65,7 +108,8 @@ export function CashierManagement() {
     (c) =>
       c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.cashierId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.email.toLowerCase().includes(searchQuery.toLowerCase())
+      c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (c.assignedStoreName && c.assignedStoreName.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   // Handle add cashier
@@ -199,37 +243,59 @@ export function CashierManagement() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-lg shadow-md p-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="bg-white rounded-lg shadow-md p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Total Cashiers</p>
-              <p className="text-3xl font-bold text-gray-900 mt-2">{stats.total}</p>
+              <p className="text-sm font-medium text-gray-600">Total</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{stats.total}</p>
             </div>
-            <div className="p-3 rounded-full bg-blue-100">
-              <Users className="h-6 w-6 text-blue-600" />
+            <div className="p-2 rounded-full bg-blue-100">
+              <Users className="h-5 w-5 text-blue-600" />
             </div>
           </div>
         </div>
-        <div className="bg-white rounded-lg shadow-md p-6">
+        <div className="bg-white rounded-lg shadow-md p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Active</p>
-              <p className="text-3xl font-bold text-green-600 mt-2">{stats.active}</p>
+              <p className="text-2xl font-bold text-green-600 mt-1">{stats.active}</p>
             </div>
-            <div className="p-3 rounded-full bg-green-100">
-              <Power className="h-6 w-6 text-green-600" />
+            <div className="p-2 rounded-full bg-green-100">
+              <Power className="h-5 w-5 text-green-600" />
             </div>
           </div>
         </div>
-        <div className="bg-white rounded-lg shadow-md p-6">
+        <div className="bg-white rounded-lg shadow-md p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Inactive</p>
-              <p className="text-3xl font-bold text-red-600 mt-2">{stats.inactive}</p>
+              <p className="text-2xl font-bold text-red-600 mt-1">{stats.inactive}</p>
             </div>
-            <div className="p-3 rounded-full bg-red-100">
-              <PowerOff className="h-6 w-6 text-red-600" />
+            <div className="p-2 rounded-full bg-red-100">
+              <PowerOff className="h-5 w-5 text-red-600" />
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-lg shadow-md p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Assigned</p>
+              <p className="text-2xl font-bold text-blue-600 mt-1">{stats.assigned}</p>
+            </div>
+            <div className="p-2 rounded-full bg-blue-100">
+              <Store className="h-5 w-5 text-blue-600" />
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-lg shadow-md p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Unassigned</p>
+              <p className="text-2xl font-bold text-yellow-600 mt-1">{stats.unassigned}</p>
+            </div>
+            <div className="p-2 rounded-full bg-yellow-100">
+              <Building2 className="h-5 w-5 text-yellow-600" />
             </div>
           </div>
         </div>
@@ -262,6 +328,9 @@ export function CashierManagement() {
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Contact
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Assigned Store
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Status
@@ -309,6 +378,19 @@ export function CashierManagement() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
+                      {cashier.assignedStoreName ? (
+                        <div className="flex items-center text-sm text-blue-600">
+                          <Store className="h-4 w-4 mr-1" />
+                          {cashier.assignedStoreName}
+                        </div>
+                      ) : (
+                        <div className="flex items-center text-sm text-yellow-600">
+                          <Building2 className="h-4 w-4 mr-1" />
+                          Not assigned
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
                       <button
                         onClick={() => handleToggleActive(cashier)}
                         className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -337,6 +419,13 @@ export function CashierManagement() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end space-x-2">
+                        <button
+                          onClick={() => handleAssignStore(cashier)}
+                          className="text-blue-600 hover:text-blue-900 p-1 rounded hover:bg-blue-50 transition-colors"
+                          title="Assign to Store"
+                        >
+                          <Building2 className="h-4 w-4" />
+                        </button>
                         <button
                           onClick={() => handleEdit(cashier)}
                           className="text-blue-600 hover:text-blue-900 p-1 rounded hover:bg-blue-50 transition-colors"
@@ -419,6 +508,58 @@ export function CashierManagement() {
                   className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
                 >
                   Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Store Modal */}
+      {isAssignModalOpen && selectedCashier && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="fixed inset-0 bg-black bg-opacity-50" onClick={() => setIsAssignModalOpen(false)} />
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Assign Cashier to Store</h3>
+                <button onClick={() => setIsAssignModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <p className="text-gray-600 mb-4">
+                Assign <strong>{selectedCashier.name}</strong> to a store:
+              </p>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Select Store</label>
+                <select
+                  value={selectedStoreId}
+                  onChange={(e) => setSelectedStoreId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">-- Not Assigned --</option>
+                  {stores
+                    .filter((s) => s.isActive)
+                    .map((store) => (
+                      <option key={store.id} value={store.id}>
+                        {store.name} ({store.code})
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setIsAssignModalOpen(false)}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAssignConfirm}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2"
+                >
+                  <Check className="h-4 w-4" />
+                  <span>Confirm</span>
                 </button>
               </div>
             </div>

@@ -49,8 +49,11 @@ export function PaymentModal({ items, total, onClose, onComplete }: PaymentModal
     onComplete(paymentMethod, parseFloat(amountPaid));
   };
 
-  // Quick amount buttons for cash payments
+  // Quick amount buttons for cash payments - small bills
   const quickAmounts = [5, 10, 20, 50, 100].filter((amt) => amt >= total || amt === Math.ceil(total / 5) * 5);
+  
+  // Large denomination quick amounts (always shown)
+  const largeAmounts = [100, 200, 500, 1000, 2000];
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -128,26 +131,44 @@ export function PaymentModal({ items, total, onClose, onComplete }: PaymentModal
 
               {/* Quick Amount Buttons (Cash only) */}
               {paymentMethod === 'cash' && (
-                <div className="flex flex-wrap gap-2 mt-3">
-                  {quickAmounts.map((amount) => (
+                <div className="space-y-2 mt-3">
+                  {/* Small denominations */}
+                  <div className="flex flex-wrap gap-2">
+                    {quickAmounts.map((amount) => (
+                      <button
+                        key={amount}
+                        type="button"
+                        onClick={() => handleQuickAmount(amount)}
+                        disabled={isProcessing}
+                        className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+                      >
+                        ${amount}
+                      </button>
+                    ))}
                     <button
-                      key={amount}
                       type="button"
-                      onClick={() => handleQuickAmount(amount)}
+                      onClick={() => handleQuickAmount(total)}
                       disabled={isProcessing}
-                      className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+                      className="px-3 py-1 text-sm bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-full transition-colors"
                     >
-                      ${amount}
+                      Exact
                     </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => handleQuickAmount(total)}
-                    disabled={isProcessing}
-                    className="px-3 py-1 text-sm bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-full transition-colors"
-                  >
-                    Exact
-                  </button>
+                  </div>
+                  
+                  {/* Large denominations */}
+                  <div className="flex flex-wrap gap-2">
+                    {largeAmounts.map((amount) => (
+                      <button
+                        key={amount}
+                        type="button"
+                        onClick={() => handleQuickAmount(amount)}
+                        disabled={isProcessing}
+                        className="px-3 py-1 text-sm bg-green-100 hover:bg-green-200 text-green-700 rounded-full transition-colors font-medium"
+                      >
+                        ${amount}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

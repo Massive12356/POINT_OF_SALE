@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Store, Lock, User, Eye, EyeOff, Shield } from 'lucide-react';
+import { Store, Lock, User, Eye, EyeOff, Shield, Building2 } from 'lucide-react';
 import { CashierService } from '../services/localStorageService';
 
 interface CashierLoginProps {
-  onLogin: (cashierName: string) => void;
+  onLogin: (cashierName: string, assignedStoreId?: string, assignedStoreName?: string) => void;
   onSwitchToAdmin: () => void;
 }
 
@@ -34,7 +34,7 @@ export function CashierLogin({ onLogin, onSwitchToAdmin }: CashierLoginProps) {
     const cashier = CashierService.validateLogin(cashierId.trim(), password);
 
     if (cashier) {
-      onLogin(cashier.name);
+      onLogin(cashier.name, cashier.assignedStoreId, cashier.assignedStoreName);
     } else {
       setError('Invalid cashier ID, password, or account is inactive');
     }
@@ -154,6 +154,9 @@ export function CashierLogin({ onLogin, onSwitchToAdmin }: CashierLoginProps) {
                 <code className="bg-white px-2 py-0.5 rounded border">pos123</code>
               </div>
             </div>
+            <p className="text-xs text-gray-400 text-center mt-2">
+              Cashiers can be assigned to stores by admin
+            </p>
           </div>
         </div>
 

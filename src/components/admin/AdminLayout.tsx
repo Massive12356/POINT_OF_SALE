@@ -9,13 +9,18 @@ import {
   ChevronDown,
   User,
   Users,
+  Receipt,
+  Building2,
+  BarChart3,
+  Store as StoreIcon,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useStore } from '../../contexts/StoreContext';
 
 /**
  * Admin page type
  */
-type AdminPage = 'dashboard' | 'products' | 'cashiers';
+type AdminPage = 'dashboard' | 'products' | 'cashiers' | 'sales' | 'stores' | 'analytics' | 'managers';
 
 /**
  * Props for AdminLayout component
@@ -32,8 +37,10 @@ interface AdminLayoutProps {
  */
 export function AdminLayout({ children, currentPage, onPageChange }: AdminLayoutProps) {
   const { user, logout } = useAuth();
+  const { currentStore, stores, switchStore } = useStore();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isStoreDropdownOpen, setIsStoreDropdownOpen] = useState(false);
 
   /**
    * Navigation items
@@ -42,6 +49,10 @@ export function AdminLayout({ children, currentPage, onPageChange }: AdminLayout
     { id: 'dashboard' as AdminPage, label: 'Dashboard', icon: LayoutDashboard },
     { id: 'products' as AdminPage, label: 'Products', icon: Package },
     { id: 'cashiers' as AdminPage, label: 'Cashiers', icon: Users },
+    { id: 'managers' as AdminPage, label: 'Managers', icon: User },
+    { id: 'sales' as AdminPage, label: 'Sales History', icon: Receipt },
+    { id: 'stores' as AdminPage, label: 'Stores', icon: Building2 },
+    { id: 'analytics' as AdminPage, label: 'Analytics', icon: BarChart3 },
   ];
 
   /**
@@ -195,6 +206,65 @@ export function AdminLayout({ children, currentPage, onPageChange }: AdminLayout
             )}
           </div>
         </header>
+
+        {/* Store Switcher Bar */}
+        {currentStore && (
+          <div className="bg-blue-50 border-b border-blue-100 px-4 lg:px-8 py-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <StoreIcon className="h-4 w-4 text-blue-600" />
+                <span className="text-sm text-blue-900 font-medium">
+                  Current Store: {currentStore.name}
+                </span>
+                <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded">
+                  {currentStore.code}
+                </span>
+              </div>
+              <div className="relative">
+                <button
+                  onClick={() => setIsStoreDropdownOpen(!isStoreDropdownOpen)}
+                  className="flex items-center space-x-2 text-sm text-blue-700 hover:text-blue-900 font-medium"
+                >
+                  <span>Switch Store</span>
+                  <ChevronDown className={`h-4 w-4 transition-transform ${isStoreDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {isStoreDropdownOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setIsStoreDropdownOpen(false)}
+                    />
+                    <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-20 py-1">
+                      <div className="px-4 py-2 border-b border-gray-100">
+                        <p className="text-xs font-medium text-gray-500 uppercase">Select Store</p>
+                      </div>
+                      {stores.filter(s => s.isActive).map((store) => (
+                        <button
+                          key={store.id}
+                          onClick={() => {
+                            switchStore(store.id);
+                            setIsStoreDropdownOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-4 py-2 text-sm hover:bg-gray-50 ${
+                            currentStore.id === store.id ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2">
+                            <StoreIcon className="h-4 w-4" />
+                            <span>{store.name}</span>
+                          </div>
+                          {currentStore.id === store.id && (
+                            <div className="w-2 h-2 bg-blue-600 rounded-full" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Page Content */}
         <main className="flex-1 overflow-auto p-4 lg:p-8">
